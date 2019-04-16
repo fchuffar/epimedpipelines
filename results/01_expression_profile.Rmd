@@ -190,10 +190,10 @@ plot_expr_hm(data, rsc=rsc, csc=csc, nb_grp_col=6, ZSCORE=TRUE)
 
 # 3 groups of tissues blood testis and ?? 
 # 3 groups of genes
-tmp_tab = sort(table(csc))
+tmp_tab = sort(table(foo$csc))
 tmp_tab
 bar = sapply(names(tmp_tab), function(n) {
-  idx_sample = names(csc)[csc==n]
+  idx_sample = names(foo$csc)[foo$csc==n]
   print(sort(decreasing=TRUE, table(s$exp_grp[idx_sample,]$tissue_group_level1)))
 })
 

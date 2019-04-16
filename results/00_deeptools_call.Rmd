@@ -1,0 +1,283 @@
+---
+title: "DMR placenta tabac (EDEN)"
+author: "Florent Chuffart"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r, echo=FALSE, eval=TRUE}
+knitr::opts_chunk$set(collapse=TRUE, comment = "#>", fig.width=9, fig.height=6, eval=TRUE, echo=FALSE, results="hide")
+# source("common.R")
+```
+# Features
+
+
+```{r}
+if (!exists("feat")) {
+  feat = genes[idx_genes,]
+  cns = "chrom_text"
+  # dmr_hg19 = readRDS("dmr_hg19.rds")
+  # dmr_rnd = readRDS("dmr_rnd.rds")
+  # dmr_hg19 = dmr_hg19[,1:6]
+  # dmr_rnd  =  dmr_rnd[,1:6]
+  # dmr_hg19$rndordmr = "DMR"
+  # dmr_rnd$rndordmr = "RND"
+  #
+  # feat = rbind(dmr_hg19, dmr_rnd)
+  # cns = "rndordmr"
+  # # for (cn in c("island", "type", "urgg", "enhancer", "pulled")) {
+}
+```
+
+
+
+# Selecting Roadmap tissues and marks
+
+```{r}
+tissues = c(
+  "brain",
+  "H1-hESC",
+  "liver",
+  "kidney",
+  # "thymus",
+  # # "prostate",
+  # "small intestine",
+  # "adrenal gland",
+  # "lung",
+  "testis",
+  "placenta"
+)
+
+marks = c("H3K4me3-human", "H3K27ac-human", "H3K36me3-human", "H3K9me3-human")
+marks = c("H3K9me3-human")
+marks = c("H3K4me3-human", "H3K36me3-human", "H3K9me3-human")
+marks = c("H3K4me3-human")
+# marks = c("H3K27me3-human")
+marks = c("H3K4me3-human", "H3K27me3-human", "H3K9me3-human")
+marks = c("H3K4me3-human", "H3K27me3-human", "H3K27ac-human", "H3K9me3-human", "H3K4me1-human")
+# marks = c("H3K4me3-human", "H3K27me3-human", "H3K27ac-human", "H3K9me3-human", "H3K9me2-human", "H3K9me1-human", "H3K4me1-human")
+# marks = c("H3K4me3-human")
+# marks = c("H3K27ac-human", "H3K4me1-human")
+# marks = c("H3K4me1-human")
+# marks = c("H3K4me3-human", "H3K27ac-human", "H3K4me1-human")
+# marks = c("H3K4me3-human")
+
+print(marks)
+```
+
+We are interested in following tissues: `r tissues`
+
+and following marks: `r marks`
+
+```{r}
+if (!exists("encode_metadata")) {
+  print("loadind encode_metadata...")
+  # https://www.encodeproject.org/metadata/type=Experiment/metadata.tsv
+  encode_metadata = read.table("~/projects/all_human_tissues/results/meth/encode_metadata.tsv", sep="\t", header=TRUE, comment.char="$", quote="¬", stringsAsFactors=FALSE)
+  encode_metadata = encode_metadata[encode_metadata$Biosample.organism == "Homo sapiens",]  
+  table(encode_metadata$Project)
+  print("done")  
+}
+
+chip_of_interest_metadata = encode_metadata[
+  # encode_metadata$File.format=="fastq" &
+  encode_metadata$Assay %in% c("ChIP-seq")                    & 
+  # encode_metadata$Assembly %in% c("hg19")                     &
+  encode_metadata$Assembly %in% c("GRCh38")                   &
+  encode_metadata$File.format %in% c("bigWig")                & 
+  encode_metadata$Output.type %in% "fold change over control" &
+  encode_metadata$Experiment.target %in% marks                &
+  encode_metadata$Biosample.term.name %in% tissues            &
+  TRUE
+,]
+
+encode_df = chip_of_interest_metadata[,c("Assay", "Assembly", "File.format", "Output.type", "Experiment.target", "Biosample.term.name", "File.accession")]
+WriteXLS::WriteXLS(encode_df, "encode_files.xlsx", AdjWidth = TRUE, BoldHeaderRow = TRUE, row.names=TRUE)
+
+table(chip_of_interest_metadata$Experiment.target, chip_of_interest_metadata$Biosample.term.name)
+
+# download bigWig files
+dest_dir = "~/projects/datashare/encode/"
+dir.create(dest_dir, recursive=TRUE, showWarnings=FALSE)
+chip_of_interest_metadata$dest_file = paste0(dest_dir, chip_of_interest_metadata$File.accession, ".bigWig")
+
+# sort samples
+chip_of_interest_metadata = chip_of_interest_metadata[order(chip_of_interest_metadata$Experiment.target, chip_of_interest_metadata$Biosample.term.name),]
+
+# # only existing files
+# chip_of_interest_metadata = chip_of_interest_metadata[file.exists(chip_of_interest_metadata$dest_file),]
+
+# # only machting size
+# file.size(chip_of_interest_metadata$dest_file) == chip_of_interest_metadata$Size
+#
+# chip_of_interest_metadata$dest_file[file.size(chip_of_interest_metadata$dest_file) != chip_of_interest_metadata$Size]
+# chip_of_interest_metadata$File.download.URL[file.size(chip_of_interest_metadata$dest_file) != chip_of_interest_metadata$Size]
+#
+# # select marks
+# chip_of_interest_metadata = chip_of_interest_metadata[chip_of_interest_metadata$Experiment.target %in% c("H3K4me3-human", "H3K27ac-human"),]
+
+# # select tissues
+# chip_of_interest_metadata = chip_of_interest_metadata[chip_of_interest_metadata$Biosample.term.name %in% c("placenta", "lung", "liver", "testis", "H1-hESC"),]
+
+# deduplicate
+chip_of_interest_metadata$key = paste(chip_of_interest_metadata$Experiment.target, chip_of_interest_metadata$Biosample.term.name, sep="_")
+# if ("H3K4me3-human" %in% marks) {
+#   chip_of_interest_metadata = chip_of_interest_metadata[-which(chip_of_interest_metadata$key == "H3K4me3-human_liver")[1],]
+#   chip_of_interest_metadata = chip_of_interest_metadata[-which(chip_of_interest_metadata$key == "H3K4me3-human_placenta")[1],]
+# }
+#
+# if ("H3K27me3-human" %in% marks) {
+#   chip_of_interest_metadata = chip_of_interest_metadata[-which(chip_of_interest_metadata$key == "H3K4me3-human_H1-hESC")[1],]
+# }
+
+
+chip_of_interest_metadata$key = paste0(chip_of_interest_metadata$Biosample.term.name, chip_of_interest_metadata$Experiment.target)
+
+chip_of_interest_metadata$rep=NA
+for (k in unique(chip_of_interest_metadata$key)) {
+  chip_of_interest_metadata[chip_of_interest_metadata$key == k,]$rep = 1:sum(chip_of_interest_metadata$key == k)
+}
+# stop("EFN")
+
+chip_of_interest_metadata = chip_of_interest_metadata[chip_of_interest_metadata$rep <= 4,]
+
+# # dedup
+# chip_of_interest_metadata = chip_of_interest_metadata[!duplicated(chip_of_interest_metadata$key), ]
+```
+
+```{r results="verbatim"}
+print(table(chip_of_interest_metadata$Biosample.term.name, chip_of_interest_metadata$Experiment.target))
+
+# stop("EFN")
+```
+
+
+
+
+
+
+
+# Download bigwig files from Roadmap
+
+```{r}
+if (substr(Sys.info()["nodename"] , 1, 4) == "luke" | substr(Sys.info()["nodename"] , 1, 4) == "dahu") {
+  # clean aliases
+  system2("rm", "-Rf ~/projects/datashare/encode/*.bw")
+  # download files and create aliases
+  aliases = epimedtools::monitored_apply(chip_of_interest_metadata, 1, function(l) {
+    # l = chip_of_interest_metadata[1,]
+    file_accession = l[["File.accession"]]
+    file_url = l[["File.download.URL"]]
+    dest_file = l[["dest_file"]]  
+    md5sum = l[["md5sum"]]
+    size = as.numeric(l[["Size"]])
+    # print(l[["Biosample.term.name"]])
+
+    # check file
+    if (file.exists(dest_file)) {
+      # md5sum == tools::md5sum(normalizePath(dest_file))
+      # print(paste(size, file.size(dest_file)))
+      if (size == file.size(dest_file)) {
+        # make alias
+        alias = paste0(dest_dir, substr(l[["Biosample.term.name"]], 1, 2), "_", l[["Experiment.target"]], "_", l[["rep"]], ".bw")
+        alias = gsub("-human", "", alias)
+        args = paste0("-s ", dest_file, " ", alias)
+        command = "ln"
+        print(paste(command, args))
+        system2(command, args)  
+        return(alias)
+      } else {
+        # remove corrupted files
+        args = dest_file
+        command = "rm"
+        print(paste(command, args))      
+        system2(command, args)  
+      }     
+   }
+
+   # download files
+   if (!file.exists(dest_file)) {
+     print(paste0("retrieving ", dest_file))
+     args = paste0(file_url, " -O ", dest_file)
+     command = "wget"
+     print(paste(command, args))
+     system2(command, args)
+   } else {
+     print(paste0(dest_file, " exists."))
+   }
+    return(NA)
+  })
+}
+# stop("EFN")
+```
+
+
+
+# Calling deepToools
+
+```{r}
+if (substr(Sys.info()["nodename"] , 1, 4) == "luke" | substr(Sys.info()["nodename"] , 1, 4) == "dahu" ) {
+  for (mark in marks) {
+    for (cn in cns) {
+      prefix = paste0("ewas_", mark, "_", cn)
+
+      # score_filenames
+      score_filenames = epimedtools::monitored_apply(chip_of_interest_metadata[chip_of_interest_metadata$Experiment.target == mark,], 1, function(l) {
+        # l = chip_of_interest_metadata[1,]
+        alias = paste0(dest_dir, substr(l[["Biosample.term.name"]], 1, 2), "_", l[["Experiment.target"]], "_", l[["rep"]], ".bw")
+        alias = gsub("-human", "", alias)
+        print(alias)
+        if (file.exists(alias)) {
+          return(alias)
+        }
+        return(NA)
+      })
+      score_filenames = gsub("~", "/home/fchuffar", as.vector(na.omit(score_filenames)))
+
+      keys = na.omit(unique(feat[[cn]]))
+      list_of_feat = lapply(keys, function(k) {
+        rownames(feat)[feat[[cn]] %in% k]
+      })
+      names(list_of_feat) = keys
+
+      if (!file.exists("tmp")) {
+        dir.create("tmp")
+      }
+      regions_filename = sapply(names(list_of_feat), function(type){
+        # deepTools Go!
+        regions_filename = paste0("tmp/feat_", type, ".bed")
+        idx = list_of_feat[[type]]
+        write.table(feat[idx, 1:6], file=regions_filename, sep="\t", quote=FALSE,row.names=FALSE, col.names=FALSE)
+        regions_filename      
+      })
+
+      matrix_file = paste0("tmp/matrix_", prefix, ".txt.gz")      
+  
+      print("computing 26k matrix with deep tools...")
+      matrix_file = deeptoolsr::dt_compute_matrix(regions_filename=regions_filename, score_filename=score_filenames, out_filename=matrix_file,
+        before_region_start_length = 5000, 
+        after_region_start_length = 5000,
+        FORCE_EXEC=TRUE
+      )
+      hm_out_filename = paste0("tmp/hm_", prefix, ".png")
+      hm_out_filename = deeptoolsr::dt_plot_heatmap(matrix_file=matrix_file, out_filename=hm_out_filename, FORCE_EXEC=TRUE)
+      print("done.")
+    }
+  }  
+}
+```
+
+
+# Session Information
+
+```{r, results="verbatim"}
+sessionInfo()
+```
+
+
+

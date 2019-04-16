@@ -1,0 +1,71 @@
+---
+title: "Histone PTM profiling (ENCODE)"
+author: "Florent Chuffart"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r, echo=FALSE, eval=TRUE, label="loading libraries"}
+knitr::opts_chunk$set(collapse=TRUE, comment = "#>", fig.width=9, fig.height=9, eval=TRUE, echo=FALSE, results="hide", dpi=150)
+```
+
+```{r, code = readLines("commons.R")}
+```
+
+# Features
+
+```{r, code = readLines("loading_features.R")}
+```
+
+The purpose is to observe istone PTM profile of provided *features*
+
+Provided *features* are: `r prefix`
+
+# Heatmap of TSS PTM profiles of clusters
+
+```{r echo=FALSE, results="verbatim"}
+genes = readRDS("~/projects/genes/bed_grch38_epimeddb.rds")
+features_ts = features[rownames(features) %in% rownames(genes)[genes$tss_cpg_status == "cpg_poor"],] 
+dim(features)
+set.seed(1)
+rnd_features  = genes[sample(rownames(genes[genes$tss_cpg_status == "cpg_poor",]), 500),]
+features_1 = features_ts [,1:6]  
+features_2 = rnd_features [,1:6]   
+
+cns = paste0("rndorts_", prefix)
+features_1[[cns]] = "OLF"
+features_2[[cns]] = "RND"
+feat = rbind(features_1, features_2)
+source(knitr::purl("00_deeptools_call.Rmd"))
+```
+
+deeptoolsr::dt_plot_heatmap("tmp/matrix_ewas_H3K27me3-human_rndorts_olfa.txt.gz", "tmp/hm_ewas_ewas_H3K27me3-human_rndorts_olfa_dsc.png", FORCE_EXEC=TRUE, sort_regions = "descend")
+deeptoolsr::dt_plot_heatmap("tmp/matrix_ewas_H3K4me3-human_rndorts_olfa.txt.gz" , "tmp/hm_ewas_ewas_H3K4me3-human_rndorts_olfa_dsc.png" , FORCE_EXEC=TRUE, sort_regions = "descend")
+deeptoolsr::dt_plot_heatmap("tmp/matrix_ewas_H3K27ac-human_rndorts_olfa.txt.gz" , "tmp/hm_ewas_ewas_H3K27ac-human_rndorts_olfa_dsc.png" , FORCE_EXEC=TRUE, sort_regions = "descend") 
+deeptoolsr::dt_plot_heatmap("tmp/matrix_ewas_H3K4me1-human_rndorts_olfa.txt.gz" , "tmp/hm_ewas_ewas_H3K4me1-human_rndorts_olfa_dsc.png" , FORCE_EXEC=TRUE, sort_regions = "descend") 
+deeptoolsr::dt_plot_heatmap("tmp/matrix_ewas_H3K9me3-human_rndorts_olfa.txt.gz" , "tmp/hm_ewas_ewas_H3K9me3-human_rndorts_olfa_dsc.png" , FORCE_EXEC=TRUE, sort_regions = "descend")
+
+
+
+
+hm_filename = paste0(prefix, "_cpg_density_dsc.png")
+deeptoolsr::dt_plot_heatmap(matrix_file, hm_filename, FORCE_EXEC=TRUE, sort_regions = "descend")
+
+
+
+
+
+
+
+
+# Session Information
+
+```{r, results="verbatim"}
+sessionInfo()
+```
+
