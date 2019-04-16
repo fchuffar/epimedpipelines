@@ -1,0 +1,659 @@
+---
+title: "Methylome profiling"
+author: "Florent Chuffart"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r, echo=FALSE, eval=TRUE, label="loading libraries"}
+knitr::opts_chunk$set(collapse=TRUE, comment = "#>", fig.width=9, fig.height=6, eval=TRUE, echo=FALSE, results="hide", dpi=75)
+```
+```{r, code = readLines("commons.R")}
+```
+
+# Features
+
+```{r, code = readLines("loading_features.R")}
+```
+
+The purpose is to observe epigenetic profile of provided *features*
+
+Provided *features* are: `r prefix`
+
+# Data
+
+```{r}
+if (!exists("study_dmeth_tcga_luad")) {
+  print("Loading study_dmeth_tcga_luad...")
+  s_luad = epimedtools::create_study("~/projects/tcga_studies/study_TCGA-LUAD_meth.rds")
+  idx_nt = rownames(s_luad$exp_grp)[s_luad$exp_grp$tissue_status %in% "normal"]
+  idx_tum = rownames(s_luad$exp_grp)[s_luad$exp_grp$tissue_status %in% "tumoral"]
+  mean_nt = epimedtools::monitored_apply(mod=5000, s_luad$data[,idx_nt], 1, mean, na.rm=TRUE)
+  study_dmeth_tcga_luad = s_luad$data[,idx_tum] - mean_nt
+  foo = epimedtools::monitored_apply(is.na(study_dmeth_tcga_luad), 2, sum)
+  table(foo)
+  hist(foo)
+  foo = foo[foo < 300000]
+  study_dmeth_tcga_luad = study_dmeth_tcga_luad[,names(foo)]
+  foo = epimedtools::monitored_apply(mod=5000, is.na(study_dmeth_tcga_luad), 1, sum)
+  table(foo)  
+  hist(foo)
+  foo = foo[foo < 1]
+  study_dmeth_tcga_luad = study_dmeth_tcga_luad[names(foo),]
+  dim(study_dmeth_tcga_luad)    
+}
+
+if (!exists("study_dmeth_tcga_lusc")) {
+  print("Loading study_dmeth_tcga_lusc...")
+  s_lusc = epimedtools::create_study("~/projects/tcga_studies/study_TCGA-LUSC_meth.rds")
+  idx_nt = rownames(s_lusc$exp_grp)[s_lusc$exp_grp$tissue_status %in% "normal"]
+  idx_tum = rownames(s_lusc$exp_grp)[s_lusc$exp_grp$tissue_status %in% "tumoral"]
+  mean_nt = epimedtools::monitored_apply(mod=5000, s_lusc$data[,idx_nt], 1, mean, na.rm=TRUE)
+  study_dmeth_tcga_lusc = s_lusc$data[,idx_tum] - mean_nt
+  foo = epimedtools::monitored_apply(is.na(study_dmeth_tcga_lusc), 2, sum)
+  table(foo)
+  hist(foo)
+  foo = foo[foo < 300000]
+  study_dmeth_tcga_lusc = study_dmeth_tcga_lusc[,names(foo)]
+  foo = epimedtools::monitored_apply(mod=5000, is.na(study_dmeth_tcga_lusc), 1, sum)
+  table(foo)  
+  hist(foo)
+  foo = foo[foo < 1]
+  study_dmeth_tcga_lusc = study_dmeth_tcga_lusc[names(foo),]
+  dim(study_dmeth_tcga_lusc)    
+}
+
+study_meth_all_human_tissues_filename = "~/projects/all_human_tissues/results/meth/study_meth_all_human_tissues.rds"
+if (!exists("study_meth_all_human_tissues")) {
+  print("Loading study_meth_all_human_tissues...")
+  study_meth_all_human_tissues = epimedtools::create_study(study_meth_all_human_tissues_filename)  
+  # foo = epimedtools::monitored_apply(is.na(study_meth_all_human_tissues$data), 2, sum)
+  # table(foo)
+  # foo = epimedtools::monitored_apply(mod=5000, is.na(study_meth_all_human_tissues$data), 1, sum)
+  # table(foo)
+  #
+  # hist(foo)
+  # foo = foo[foo < 1]
+  # study_meth_all_human_tissues$data = study_meth_all_human_tissues$data[names(foo),]
+  # dim(study_meth_all_human_tissues$data)
+}
+
+study_meth_nt_tcga_filename = "~/projects/tcga_studies/results/study_nt_tcga_meth.rds"
+if (!exists("study_meth_nt_tcga")) {
+  print("Loading study_meth_nt_tcga...")
+  study_meth_nt_tcga = epimedtools::create_study(study_meth_nt_tcga_filename)  
+  # foo = epimedtools::monitored_apply(mod=5000, is.na(study_meth_nt_tcga$data), 1, sum)
+  # hist(foo)
+  # foo = foo[foo < 1]
+  # study_meth_nt_tcga$data = study_meth_nt_tcga$data[names(foo),]
+  # dim(study_meth_nt_tcga$data)
+}
+
+if (!exists("epic")) {
+  print("Loading Epic metadata .")
+  epic_orig = readRDS("~/projects/datashare/platforms/EPIC.hg38.manifest.gencode.v22.rds")
+  # epic_orig = readRDS("~/projects/datashare/platforms/EPIC.hg38.manifest.rds")
+  epic_orig
+  epic = as.data.frame(epic_orig)
+  rownames(epic) = names(epic_orig)
+  head(epic)
+  pf_chr_colname = "seqnames"
+  pf_pos_colname = "start"
+  epic = epic[order(epic[[pf_chr_colname]], epic[[pf_pos_colname]]),]
+  # rownames(epic) =
+  head(epic)
+}
+print(head(epic))
+dim(epic)
+
+plot_meth_hm = function(data, nb_grp=4, rsc) {
+  # dim(data)
+  data = data[!apply(is.na(data), 1, all  ), ]
+  # dim(data)
+  # clustering base on correlation for tissues
+  tmp_d = data
+  tmp_d = tmp_d[!apply(is.na(tmp_d), 1, any), ]
+  tmp_d = t(tmp_d) - apply(tmp_d, 2, mean)
+  tmp_d = t(tmp_d)
+  tmp_d = cor(tmp_d, method="pe")
+  # dim(tmp_d)
+  hc_col = hclust(dist(1 - tmp_d), method="complete")
+  Colv = as.dendrogram(hc_col)
+  dendrogram="col"      
+
+  # clustering base on eucl. dist. for feats
+  tmp_d = data
+  tmp_d = tmp_d[,!apply(is.na(tmp_d), 2, any)]
+  d = dist(tmp_d)
+  hc_row = hclust(d, method="complete")
+  Rowv = as.dendrogram(hc_row)
+  dendrogram="both"      
+
+  # col
+  colors=c("green", "black", "red")
+  cols = colorRampPalette(colors)(20)
+
+  if (missing(rsc)) {
+    # gene clusters
+    grps = list()
+    ct = cutree(hc_row, nb_grp)
+    for (i in 1:nb_grp) {
+      grps[[palette()[i]]] = names(ct)[ct==i]
+    }
+    # print(grps)
+    RowSideColors = palette()[ct[rownames(data)]]    
+    names(RowSideColors) = rownames(data)    
+  } else {
+    RowSideColors = rep("white", nrow(data))
+    names(RowSideColors) = rownames(data)
+    idx = intersect(rownames(data), names(rsc))
+    RowSideColors[idx] = rsc[idx]
+  }
+
+  foo = gplots::heatmap.2(data, Rowv=Rowv, Colv=Colv, dendrogram=dendrogram, trace="none", col=cols, main=paste0("Mean of mean (", nrow(data), " features x ", ncol(data), " tissues)"), mar=c(10,5), useRaster=TRUE, RowSideColors=RowSideColors)
+  return(RowSideColors)
+}
+
+get_gen_seq = function(feat, up_str=5000, dwn_str=5000, genome=BSgenome.Hsapiens.UCSC.hg38::Hsapiens) {
+  chr = feat[[1]]
+  strand = feat[[6]]
+  if (strand == "+") {
+    tss = as.numeric(feat[[2]])
+    bef = up_str
+    aft = dwn_str
+  } else {
+    tss = as.numeric(feat[[3]])
+    bef = dwn_str
+    aft = up_str
+  }  
+  beg = max(1,tss - bef)
+  end = min(length(genome[[chr]]), tss + aft)
+  str = as.character(BSgenome::getSeq(genome, chr, beg, end))
+  if (tss - bef - 1 < 0) {
+    str = paste0(paste0(rep("N", -(tss - bef - 1)),collapse=""), str)    
+  }
+  if (0 < tss + aft - length(genome[[chr]])) {
+    str = paste0(str, paste0(rep("N", tss + aft - length(genome[[chr]])),collapse=""))
+  }  
+  if (strand == "-") {
+    str = as.character(Biostrings::reverseComplement(Biostrings::DNAStringSet(str)))
+  }
+  return(str)
+}
+
+get_cpg_den = function(seq, step=250) {
+  foo = seq(1, nchar(seq) - 1, step)
+  bins = cbind(foo, foo+step-1)
+  cpg_den = apply(bins, 1, function(b) {
+    # b = bins[1,]
+    str = substr(seq, b[[1]], b[[2]])
+    # l = nchar(str)
+    lnn = nchar(gsub("N", "", str))
+    # denom = l - lnn
+    if (lnn==0) {
+      return(NA)
+    } else {
+      return(stringr::str_count(str, "CG") / lnn)
+    }
+  })
+  return(cpg_den)
+}
+
+dump_dt_matrix = function(matrix_file, features_cpg_density) {
+  upstream = 5000
+  downstream = 5000
+  bin_size = (upstream + downstream) / ncol(features_cpg_density)
+
+  matrix_metadata=list()
+  matrix_metadata$`min threshold` = NA
+  matrix_metadata$`max threshold` = NA
+  # jsonlite::toJSON(matrix_metadata, strict_atomic=TRUE, auto_unbox=TRUE, null="null")
+  matrix_metadata$upstream = upstream
+  matrix_metadata$downstream = downstream
+  matrix_metadata$`bin size` = bin_size
+  matrix_metadata$sample_labels = list("tss_meth_status")
+  matrix_metadata$sample_boundaries = c(0,ncol(features_cpg_density)-6)
+  matrix_metadata$group_boundaries = c(0,nrow(features_cpg_density))
+  matrix_metadata$group_labels = list("features")
+
+  matrix_metadata$`skip zeros` = FALSE
+  matrix_metadata$`missing data as zero` = FALSE
+  matrix_metadata$`unscaled 3 prime` = 0
+  matrix_metadata$`unscaled 5 prime` = 0
+  matrix_metadata$scale = 1
+  matrix_metadata$`sort using` = "mean"
+  matrix_metadata$`ref point`="TSS"
+  matrix_metadata$verbose = TRUE
+  matrix_metadata$`sort regions` = "keep"
+  matrix_metadata$`proc number`= 12
+  matrix_metadata$body=0
+  matrix_metadata$`bin avg type`="mean"
+  matrix_metadata$`nan after end` = FALSE
+
+  con = gzfile(matrix_file, "wb")
+  writeLines(paste0("@",jsonlite::toJSON(matrix_metadata, strict_atomic=TRUE, auto_unbox=TRUE, null="null")), con=con)
+  close(con)
+
+  tmp_features_cpg_density = features_cpg_density
+  tmp_features_cpg_density[is.na(tmp_features_cpg_density)] = 0
+  con = gzfile(matrix_file, "ab")
+  write.table(tmp_features_cpg_density, file=con, sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE,append=TRUE)
+  close(con)
+}
+
+# stop("EFN")
+```
+
+The purpose is to observe epigenetic profile of provided *features*
+
+Provided *features* are: `r prefix`
+
+Observed dataset are:  
+
+  - DNA methylation of normal human tissues (GEO)
+  - DNA meth of non tumoral tisues (TCGA)
+  - ChIP of various PTM marks in various human tissues (ENCODE)
+
+# Descriptive statistics of features
+
+
+```{r echo=FALSE, results="verbatim"}
+head(features)
+dim(features)
+```
+
+# CpG density of features (based on grch38 sequences)
+
+
+```{r label="CpG density"}
+up_str = dwn_str = 2500
+if (!exists("features_cpg_density")) {
+  print("Building features_cpg_density...")
+  features_seqs = epimedtools::monitored_apply(mod=30, features, 1, get_gen_seq, up_str=up_str, dwn_str=dwn_str)
+  features_cpg_density = t(sapply(features_seqs, get_cpg_den))
+  features$cpg_density = apply(features_cpg_density, 1, mean)
+  #...
+  # features$cpg_density_nbN = ...
+  features_cpg_density = cbind(features[,1:6], features_cpg_density)    
+}
+matrix_file = paste0(prefix, "_cpg_density.txt.gz")
+dump_dt_matrix(matrix_file, features_cpg_density)
+hm_filename = paste0(prefix, "_cpg_density.png")
+deeptoolsr::dt_plot_heatmap(matrix_file, hm_filename, FORCE_EXEC=TRUE)
+hm_filename = paste0(prefix, "_cpg_density_dsc.png")
+deeptoolsr::dt_plot_heatmap(matrix_file, hm_filename, FORCE_EXEC=TRUE, sort_regions = "descend")
+```
+
+For each feature, `cpg_density` is computed as the number of CpG in the grch38 sequences of TSS +/- `r up_str/1000`kb divided by the length of the sequence.
+
+```{r label="Heatmap CpG density", fig.width=9, fig.height=9}
+data = as.matrix(features_cpg_density[,-(1:6)])
+data = data[order(apply(data, 1, mean, na.rm=TRUE), decreasing=TRUE),]
+
+Colv = NULL
+Rowv = NULL
+dendrogram="none"      
+# col
+colors=c("white", "red","red")
+cols = colorRampPalette(colors)(20)
+# hm
+foo = gplots::heatmap.2(data, Rowv=Rowv, Colv=Colv, dendrogram=dendrogram, trace="none", col=cols, main=paste0("CpG density of ", nrow(data), " features TSS +/-", up_str, " bp"), mar=c(10,5), useRaster=TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Mapping of Infinium MethylationEPIC probes and features
+
+## Filtering features according to number of probes
+
+```{r, label="Indexing probe by features"}
+up_str = 2500
+dwn_str = 2500  
+nb_probe_min = 1
+
+if (!exists("feat_indexed_probes")) {
+  print("Indexing probe by features")
+  # params
+  ## index meth probes by chr
+  pf_chr_colname = "seqnames"
+  pf_pos_colname = "start"
+  chrs = unique(features[,1])
+  chrs_indexed_epic = lapply(chrs, function(chr) {
+    print(chr)
+    idx = rownames(epic)[epic[[pf_chr_colname]] %in% chr]  
+    ret = epic[idx,]
+    return(ret)
+  })
+  names(chrs_indexed_epic) = chrs
+  # barplot(sapply(chrs_indexed_epic, dim)[1,], leg=names(chrs_indexed_epic), las=2)
+  ## index probes by gene name
+  feat_indexed_probes = epimedtools::monitored_apply(features, 1, function(gene) {
+    # gene = features[1,]
+    # print(gene)
+    chr = gene[[1]]
+    meth_platform = chrs_indexed_epic[[chr]]
+    ret = dmprocr::get_probe_names(gene, meth_platform, pf_chr_colname, pf_pos_colname, up_str, dwn_str) 
+    return(ret)
+  })
+}
+
+# Filtering gene by #probes
+features$nb_epic_probes = sapply(feat_indexed_probes[rownames(features)], length)
+sub_features =  features[features$nb_epic_probes >= nb_probe_min,]
+dim(sub_features)
+```
+
+For each feature, `nb_epic_probes` is computed as the number of probes of the Illumina Infinium MethylationEPIC BeadChip included in TSS +/- `r up_str/1000`kb.
+
+Selecting features with at least `r nb_probe_min` probe(s) in the TSS +/- `r up_str/1000`kb : 
+  
+- `r length(unique(unlist(feat_indexed_probes[rownames(sub_features)])))` CpGs 
+- corresponding to `r length(rownames(sub_features))` features
+
+```{r}
+layout(matrix(1:2, 1), respect=TRUE)
+hist(    features$nb_epic_probes, breaks=0:max(features$nb_epic_probes)    , main=paste(nrow(features), "features"),     xlab=paste0("#probes in TSS+/-",up_str/1000,"kb"))
+hist(sub_features$nb_epic_probes, breaks=0:max(sub_features$nb_epic_probes), main=paste(nrow(sub_features), "features"), xlab=paste0("#probes in TSS+/-",up_str/1000,"kb"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Filtering features embeding CGIslands
+
+For each feature, `embed_cgi` is computed as TRUE if there is at least one probe in sequences of TSS +/- `r up_str/1000`kb that is annoted "Island".
+
+```{r label="filtering features embeding CGIslands"}
+sub_epic = epic[unlist(unique(feat_indexed_probes[rownames(sub_features)])),]
+embed_cgi = epimedtools::monitored_apply(sub_features, 1,  function(f) {
+  p = feat_indexed_probes[[f[[4]]]]
+  ret = "Island" %in% sub_epic[p,]$CGIposition
+  return(ret)
+})
+features$embed_cgi = NA
+features[names(embed_cgi),]$embed_cgi = embed_cgi
+
+sub_features =  features[names(embed_cgi)[embed_cgi],]
+dim(sub_features)
+
+f = features[c(names(embed_cgi)[embed_cgi], names(embed_cgi)[!embed_cgi]),]
+
+matrix_file = paste0(prefix, "_cpg_density_rp.txt.gz")
+dump_dt_matrix(matrix_file, features_cpg_density[rownames(f),])
+hm_filename = paste0(prefix, "_cpg_density_rp.png")
+deeptoolsr::dt_plot_heatmap(matrix_file, hm_filename, FORCE_EXEC=TRUE)
+
+mat = (features_cpg_density[rownames(f),-(1:6)]) 
+mat = mat[!apply(is.na(mat), 1, any),] 
+pca = prcomp(mat, scale=FALSE)
+v = pca$sdev * pca$sdev
+p = v / sum(v) * 100
+
+layout(matrix(1:2,1), respect=TRUE)
+barplot(p)
+i = 1
+j=2
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col= embed_cgi[names( pca$x[,1])]+1)
+```
+
+```{r , fig.width=9, fig.height=9}
+data = as.matrix(features_cpg_density[rownames(f),-(1:6)])
+data = data[order(apply(data, 1, mean, na.rm=TRUE), decreasing=TRUE),]
+
+RowSideColors=rep("black", nrow(data))
+names(RowSideColors) = rownames(data)
+RowSideColors[names(embed_cgi)[embed_cgi]] = "red"
+
+Colv = NULL
+Rowv = NULL
+dendrogram="none"      
+# col
+colors=c("white", "red","red")
+cols = colorRampPalette(colors)(20)
+# hm
+foo = gplots::heatmap.2(data, Rowv=Rowv, Colv=Colv, dendrogram=dendrogram, trace="none", col=cols, main=paste0("CpG density of ", nrow(data), " features TSS +/-", up_str, " bp"), mar=c(10,5), useRaster=TRUE, RowSideColors=RowSideColors)
+```
+
+Selection of `r length(unique(unlist(feat_indexed_probes[rownames(sub_features)])))` CpGs corresponding to `r length(rownames(sub_features))` features.
+
+```{r echo=TRUE, results="verbatim"}
+table(embed_cgi)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Localisation of features across genome
+
+
+```{r}
+genes = readRDS("~/projects/genes/bed_grch38_epimeddb.rds")
+
+# locate
+chrs = unique(genes[,1])[order(as.numeric(substr(unique(genes[,1]),4,100)))]
+chrtss = lapply(chrs, function(chr) {
+  
+  # chr = chrs[1]
+  # apply(features[features[,1] == chr,], 1, function(l) {
+  apply(genes[genes[,1] == chr,], 1, function(l) {
+    ifelse(l[[6]] == "+", as.numeric(l[[2]]), as.numeric(l[[3]]))
+  })
+})
+names(chrtss) = chrs
+
+
+if (sum(!rownames(features) %in% rownames(genes)) > 0) {
+  warning("All `features` are not in `genes`.")
+}
+layout(1, respect=TRUE)
+stoda::locate(gs=rownames(features), chrtss=chrtss)
+axis(2,labels=rev(chrs), at=1:length(chrs), las=2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# DNA methylation profile
+
+
+## All human tissues methylome study
+
+30 normal tissues coming from GSEXXX... analysed using Illumina Infinium HumanMethylation450K BeadChip.
+
+
+```{r label="reduction of all_human_tissues signal by tissue"}
+s = study_meth_all_human_tissues
+
+## Mapping samples by tissues
+key = "tissue_group_level1"
+tissues = na.omit(sort(unique(s$exp_grp[[key]])))
+tissues_indexed_samples = lapply(tissues, function(t) {
+  rownames(s$exp_grp)[s$exp_grp[[key]] %in% t]
+})
+names(tissues_indexed_samples) = tissues
+tmp_meth_data = s$data[intersect(rownames(s$data), unique(unlist(feat_indexed_probes))),]
+
+## Reduction of samples by tissues
+meth_by_tissues = reduce_rows(t(tmp_meth_data), map=tissues_indexed_samples, na.rm=TRUE)
+meth_by_tissues = t(meth_by_tissues)
+head(meth_by_tissues)
+print(dim(meth_by_tissues))
+
+## Reduction probes by features
+meth_by_tissues_by_feature = reduce_rows(tmp_meth_data=meth_by_tissues, map=feat_indexed_probes[rownames(sub_features)], na.rm=TRUE)
+head(meth_by_tissues_by_feature)
+print(dim(meth_by_tissues_by_feature))
+
+# saveRDS(meth_by_tissues_by_feature, "meth_by_tissues_by_feature.rds")
+```
+
+```{r , fig.width=9, fig.height=9}
+rsc = plot_meth_hm(meth_by_tissues_by_feature)
+features$meth_cluster = NA
+features[names(rsc),]$meth_cluster = rsc
+WriteXLS::WriteXLS(features, paste0(prefix, "_meth_profile.xlsx"), AdjWidth = TRUE, BoldHeaderRow = TRUE, row.names=TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Non tumoral TCGA methylome study
+
+15 non tumoral tissues coming from TCGA analysed using Illumina Infinium HumanMethylation450K BeadChip.
+
+```{r label="reduction of TCGA signal by tissue", eval=TRUE}
+s = study_meth_nt_tcga
+dim(s$data)
+
+# Mapping of sample by tissues
+key = "tissue_group_level1"
+tmp_tab = sort(table(s$exp_grp[[key]]))
+print(tmp_tab)
+tissues = names(tmp_tab)[tmp_tab>=5]
+tissues_indexed_samples = lapply(tissues, function(t) {
+  rownames(s$exp_grp)[s$exp_grp[[key]] %in% t]
+})
+names(tissues_indexed_samples) = tissues
+tmp_meth_data = s$data[intersect(rownames(s$data), unique(unlist(feat_indexed_probes))),]
+
+## Reduction of samples by tissue
+meth_by_tissues = reduce_rows(t(tmp_meth_data), map=tissues_indexed_samples, na.rm=TRUE)
+meth_by_tissues = t(meth_by_tissues)
+head(meth_by_tissues)
+print(dim(meth_by_tissues))
+
+## Reduction probes by feature
+meth_by_tissues_by_feature = reduce_rows(tmp_meth_data=meth_by_tissues, map=feat_indexed_probes[rownames(sub_features)], na.rm=TRUE)
+head(meth_by_tissues_by_feature)
+print(dim(meth_by_tissues_by_feature))
+
+```
+
+```{r , fig.width=9, fig.height=9}
+plot_meth_hm(meth_by_tissues_by_feature, rsc=rsc)
+```
+
+
+
+
+
+
+
+
+
+## Differential methylation in TCGA LUAD
+
+```{r label="reduction of TCGA LUAD signal by tissue", eval=TRUE}
+
+## Reduction probes by feature
+meth_by_sample_by_feature = reduce_rows(tmp_meth_data=study_dmeth_tcga_luad, map=feat_indexed_probes[rownames(sub_features)], na.rm=TRUE)
+head(meth_by_sample_by_feature)
+print(dim(meth_by_sample_by_feature))
+
+```
+
+```{r , fig.width=9, fig.height=9}
+plot_meth_hm(meth_by_sample_by_feature, rsc=rsc)
+```
+
+## Differential methylation in TCGA LUSC
+
+```{r label="reduction of TCGA LUSC signal by tissue", eval=TRUE}
+
+## Reduction probes by feature
+meth_by_sample_by_feature = reduce_rows(tmp_meth_data=study_dmeth_tcga_lusc, map=feat_indexed_probes[rownames(sub_features)], na.rm=TRUE)
+head(meth_by_sample_by_feature)
+print(dim(meth_by_sample_by_feature))
+
+```
+
+```{r , fig.width=9, fig.height=9}
+plot_meth_hm(meth_by_sample_by_feature, , rsc=rsc)
+```
+
+
+
+
+# Session Information
+
+```{r, results="verbatim"}
+sessionInfo()
+```
+

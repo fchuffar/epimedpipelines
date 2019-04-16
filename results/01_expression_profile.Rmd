@@ -1,0 +1,378 @@
+---
+title: "Expression profiling"
+author: "Florent Chuffart"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r, echo=FALSE, eval=TRUE, label="loading libraries"}
+knitr::opts_chunk$set(collapse=TRUE, comment = "#>", fig.width=9, fig.height=9, eval=TRUE, echo=FALSE, results="hide", dpi=150)
+```
+```{r, code = readLines("commons.R")}
+```
+
+# Features
+
+```{r, code = readLines("loading_features.R")}
+```
+
+The purpose is to observe epigenetic profile of provided *features*
+
+Provided *features* are: `r prefix`
+
+
+```{r echo=FALSE, results="verbatim"}
+head(features)
+dim(features)
+```
+
+
+
+
+# Data
+
+
+Observed dataset are:  
+
+  - gene expression normal human tissues (extended NCBI HPA RNA-seq normal tissues)
+  - gene expression normal human tissues (GTEx)
+  - gene expression of non tumoral tisues (TCGA)
+
+
+```{r}
+study_trscr_all_human_tissues_filename = "~/projects/all_human_tissues/results/trscr/study_all_human_tissues.rds"
+if (!exists("study_trscr_all_human_tissues")) {
+  print("Loading study_trscr_all_human_tissues...")
+  study_trscr_all_human_tissues = epimedtools::create_study(study_trscr_all_human_tissues_filename)  
+  # Only HPA
+  idx = rownames(study_trscr_all_human_tissues$exp_grp)[study_trscr_all_human_tissues$exp_grp$main_gse_number %in% "E-MTAB-2836"]
+  study_trscr_all_human_tissues$exp_grp = study_trscr_all_human_tissues$exp_grp[idx,]
+  study_trscr_all_human_tissues$data = study_trscr_all_human_tissues$data[,idx]
+}
+
+study_trscr_es_filename = "~/projects/all_human_tissues/results/trscr/study_all_human_tissues.rds"
+if (!exists("study_trscr_es")) {
+  print("Loading study_trscr_es...")
+  study_trscr_es = epimedtools::create_study(study_trscr_es_filename)  
+  # Only ES (GSE...)
+  idx = rownames(study_trscr_es$exp_grp)[!study_trscr_es$exp_grp$main_gse_number %in% "E-MTAB-2836"]
+  study_trscr_es$exp_grp = study_trscr_es$exp_grp[idx,]
+  study_trscr_es$data = study_trscr_es$data[,idx]
+}
+
+
+study_nt_tcga_trscr_filename = "~/projects/tcga_studies/results/study_nt_tcga_trscr.rds"
+if (!exists("study_nt_tcga_trscr")) {
+  print("Loading study_nt_tcga_trscr...")
+  study_nt_tcga_trscr = epimedtools::create_study(study_nt_tcga_trscr_filename)  
+}
+
+study_gtex_filename = "~/projects/gtex/results/study_gtex.rds"
+if (!exists("study_gtex")) {
+  print("Loading study_gtex...")
+  study_gtex = epimedtools::create_study(study_gtex_filename)  
+}
+
+if (!exists("study_GSE95587")) {
+  study_GSE95587 = epimedtools::create_study("~/projects/probrain/results/study_GSE95587.rds")
+  study_GSE95587$exp_grp$braak_score = factor(study_GSE95587$exp_grp$braak_score, levels = c("I", "II", "III", "IV", "V", "VI"))
+  study_GSE95587$exp_grp$diagnosis = factor(study_GSE95587$exp_grp$diagnosis, levels = c("control", "Alzheimer's disease"))
+  study_GSE95587$exp_grp = study_GSE95587$exp_grp[order(study_GSE95587$exp_grp$braak_score, study_GSE95587$exp_grp$diagnosis),]
+  study_GSE95587$data = study_GSE95587$data[,rownames(study_GSE95587$exp_grp)]
+}
+
+if (!exists("study_GSE110717")) {
+  study_GSE110717 = epimedtools::create_study("~/projects/probrain/results/study_GSE110717.rds")
+}
+
+
+
+study_human_spermato_filename = "~/projects/human_spermato/results/study_human_spermato.rds"
+if (!exists("study_human_spermato")) {
+  print("Loading study_human_spermato...")
+  study_human_spermato = epimedtools::create_study(study_human_spermato_filename)   
+  study_human_spermato$exp_grp$stage = factor(study_human_spermato$exp_grp$stage, levels=c("dark", "pale", "lept", "earl", "late", "roun"))  
+  study_human_spermato$exp_grp = study_human_spermato$exp_grp[order(study_human_spermato$exp_grp$stage),]
+  study_human_spermato$data = study_human_spermato$data[,rownames(study_human_spermato$exp_grp)]
+  
+}
+
+if (!exists("study_h2al2")) {
+  study_h2al2 = epimedtools::create_study("~/projects/spg_rnaseq_h2al2/results/study_h2al2.rds")
+  study_h2al2$exp_grp = study_h2al2$exp_grp[order(study_h2al2$exp_grp$stage),]
+  study_h2al2$data = study_h2al2$data[,rownames(study_h2al2$exp_grp)]
+}
+
+
+
+
+# study_nt_tcga_trscr_filename = "~/projects/tcga_studies/results/study_nt_tcga_trscr.rds"
+# if (!exists("study_nt_tcga_trscr")) {
+#   print("Loading study_nt_tcga_trscr...")
+#   study_nt_tcga_trscr = epimedtools::create_study(study_nt_tcga_trscr_filename)
+# }
+
+# study_trscr_lusc_filename = "~/projects/tcga_studies/study_TCGA-LUSC_trscr.rds"
+# if (!exists("study_trscr_lusc")) {
+#   print("Loading study_trscr_lusc...")
+#   study_trscr_lusc = epimedtools::create_study(study_trscr_lusc_filename)
+# }
+
+```
+
+
+
+
+# Gene expression profiles
+
+
+
+
+## GTEx
+
+```{r label="expr profile in study_gtex"}
+s = study_gtex
+
+if (sum(!rownames(features) %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_gtex` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(rownames(features), rownames(s$data))
+data = s$data[tmp_idx_features,]
+# colnames(data) = paste0(s$exp_grp[colnames(data),]$tissue_group_level1, "_", 1:ncol(data))
+foo = plot_expr_hm(data, nb_grp_row=3, nb_grp_col=6, ZSCORE=FALSE)
+rsc = foo$rsc
+csc = foo$csc
+
+plot_expr_hm(data, rsc=rsc, csc=csc, nb_grp_col=6, ZSCORE=TRUE)
+```
+
+
+```{r results="verbatim"}
+# Low exoression :
+# "RPS17"
+
+# # [1]
+# "RPS26" ts liver
+# "UBA52"
+# # > names(rsc)[rsc==names(tmp_tab)[2]]
+# # [1]
+# "RPS27A "  ts
+# "RPL39L"   ts nc
+# "RPL26L1"  nc                  ***
+# "RPL7L1"   nc
+# "RPL10L"   nc (non canonic)
+# "RPS27L"   ts nc
+# "RPL3L"    ts nc
+#
+# Low exoression :
+# "RPS17"
+
+# diff expressed RPL15
+
+# > names(rsc)[rsc==names(tmp_tab)[3]]
+#  [1] "RPL22"   "RPL11"   "RPS8"    "RPL5"    "RPS27"   "RPS7"    "RPL31"
+#  [8] "RPL37A"  "RPL32"   ""   "RPSA"    "RPL14"   "RPL29"   "RPL24"
+# [15] "RPL22L1" "RPL35A"  "RPL9"    "RPL34"   "RPS3A"   "RPL37"   "RPS23"
+# [22] "RPS14"   "RACK1"   "RPS10"   "RPL10A"  "RPS12"   "RPS20"   "RPL7"
+# [29] "RPL30"   "RPL8"    "RPS6"    "RPL35"   "RPL12"   "RPL7A"   "RPS24"
+# [36] "RPLP2"   "RPL27A"  "RPS13"   "FAU"     "RPS3"    "RPS25"   "RPL41"
+# [43] "RPL6"    "RPLP0"   "RPL21"   "RPS29"   "RPL4"    "RPLP1"   "RPS17"
+# [50] "RPS2"    "RPS15A"  "RPL26"   "RPL23A"  "RPL19"   "RPL27"   "RPL38"
+# [57] "RPL17"   "RPS15"   "RPL36"   "RPS28"   "RPL18A"  "RPS16"   "RPS19"
+# [64] "RPL18"   "RPL13A"  "RPS11"   "RPS9"    "RPL28"   "RPS5"    "RPS21"
+# >
+
+# 3 groups of tissues blood testis and ?? 
+# 3 groups of genes
+tmp_tab = sort(table(csc))
+tmp_tab
+bar = sapply(names(tmp_tab), function(n) {
+  idx_sample = names(csc)[csc==n]
+  print(sort(decreasing=TRUE, table(s$exp_grp[idx_sample,]$tissue_group_level1)))
+})
+
+# 2 groups of genes
+
+tmp_tab = sort(table(rsc))
+tmp_tab
+bar = sapply(names(tmp_tab), function(n) {
+  idx_genes = names(rsc)[rsc==n]
+  print(idx_genes)
+})
+```
+
+
+## Alzheimer´s disease
+
+```{r label="expr profile in study_GSE95587"}
+s = study_GSE95587
+
+if (sum(!rownames(features) %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_GSE95587` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(rownames(features), rownames(s$data))
+data = s$data[tmp_idx_features,]
+colnames(data) = paste0(s$exp_grp[colnames(data),]$diagnosis, "_", s$exp_grp[colnames(data),]$braak_score, "_", 1:ncol(data))
+foo = plot_expr_hm(data, rsc=rsc)
+foo = plot_expr_hm(data, rsc=rsc, csc=foo$csc, ZSCORE=TRUE)
+
+# s = study_GSE95587
+# s$exp_grp = s$exp_grp[foo$hc_col$order,]
+# s$exp_grp = s$exp_grp[order(s$exp_grp$braak_score, s$exp_grp$diagnosis),]
+# s$data = s$data[,rownames(s$exp_grp)]
+# data = s$data[tmp_idx_features,]
+# colnames(data) = paste0(s$exp_grp[colnames(data),]$diagnosis, "_", s$exp_grp[colnames(data),]$braak_score, "_", 1:ncol(data))
+# bar = plot_expr_hm(data, rsc=rsc, nb_grp_row=2, CLUST_COL=FALSE)
+```
+
+
+
+
+
+## Parkinson´s disease
+
+```{r label="expr profile in study_GSE110717"}
+s = study_GSE110717
+
+if (sum(!rownames(features) %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_GSE95587` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(rownames(features), rownames(s$data))
+data = s$data[tmp_idx_features,]
+colnames(data) = s$exp_grp$description
+foo = plot_expr_hm(data, rsc=rsc)
+foo = plot_expr_hm(data, rsc=rsc, csc=foo$csc, ZSCORE=TRUE)
+
+# s = study_GSE95587
+# s$exp_grp = s$exp_grp[foo$hc_col$order,]
+# s$exp_grp = s$exp_grp[order(s$exp_grp$braak_score, s$exp_grp$diagnosis),]
+# s$data = s$data[,rownames(s$exp_grp)]
+# data = s$data[tmp_idx_features,]
+# colnames(data) = paste0(s$exp_grp[colnames(data),]$diagnosis, "_", s$exp_grp[colnames(data),]$braak_score, "_", 1:ncol(data))
+# bar = plot_expr_hm(data, rsc=rsc, nb_grp_row=2, CLUST_COL=FALSE)
+```
+
+
+
+
+## HPA RNA-seq normal tissues (extended)
+
+```{r label="expr profile in all_human_tissues"}
+s = study_trscr_all_human_tissues
+
+if (sum(!rownames(features) %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_trscr_all_human_tissues` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(rownames(features), rownames(s$data))
+data = s$data[tmp_idx_features,]
+colnames(data) = paste0(s$exp_grp[colnames(data),]$tissue_group_level1, "_", 1:ncol(data))
+foo = plot_expr_hm(data, rsc=rsc)
+foo = plot_expr_hm(data, rsc=rsc, ZSCORE=TRUE)
+```
+
+
+
+
+
+## ES
+
+```{r label="expr profile in study_es"}
+s = study_trscr_es
+
+if (sum(!rownames(features) %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_nt_tcga_trscr` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(rownames(features), rownames(s$data))
+data = s$data[tmp_idx_features,]
+colnames(data) = paste0(s$exp_grp[colnames(data),]$sample_title, "_", 1:ncol(data))
+foo = plot_expr_hm(data, rsc=rsc)
+foo = plot_expr_hm(data, rsc=rsc, ZSCORE=TRUE)
+```
+
+
+
+
+## TCGA
+
+```{r label="expr profile in study_nt_tcga_trscr"}
+s = study_nt_tcga_trscr
+
+if (sum(!rownames(features) %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_nt_tcga_trscr` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(rownames(features), rownames(s$data))
+data = s$data[tmp_idx_features,]
+colnames(data) = paste0(s$exp_grp[colnames(data),]$tissue_group_level1, "_", 1:ncol(data))
+foo = plot_expr_hm(data, rsc=rsc)
+foo = plot_expr_hm(data, rsc=rsc, ZSCORE=TRUE)
+```
+
+
+
+
+
+
+
+## Human Spermatogenesis
+
+```{r label="expr profile in study_human_spermato"}
+s = study_human_spermato
+
+if (sum(!rownames(features) %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_human_spermato` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(rownames(features), rownames(s$data))
+data = s$data[tmp_idx_features,]
+colnames(data) = paste0(s$exp_grp[colnames(data),]$stage, "_", 1:ncol(data))
+foo = plot_expr_hm(data, rsc=rsc, CLUST_COL=FALSE)
+foo = plot_expr_hm(data, rsc=rsc, ZSCORE=TRUE, CLUST_COL=FALSE)
+```
+
+## H2AL2 KO
+
+```{r label="expr profile in study_h2al2"}
+s = study_h2al2
+
+mouse_genes = homologene::homologene(features$entrez, inTax=9606, outTax=10090)[,2]
+if (sum(!mouse_genes %in% rownames(s$data)) > 0) {
+  warning(paste0("All features are not in `study_h2al2` data. ", sum(rownames(features) %in% rownames(s$data)), "/", nrow(features)))
+}
+# data
+tmp_idx_features = intersect(mouse_genes, rownames(s$data))
+data = s$data[tmp_idx_features,]
+colnames(data) = paste0(s$exp_grp[colnames(data),]$stage, "_", 1:ncol(data))
+foo = plot_expr_hm(data, CLUST_COL=FALSE)
+foo = plot_expr_hm(data, ZSCORE=TRUE, CLUST_COL=FALSE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Session Information
+
+```{r, results="verbatim"}
+sessionInfo()
+```
+
